@@ -6,7 +6,7 @@ import random
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # Mengikat client ke alamat localhost dengan port acak antara 8000 hingga 9000
-client.bind(("192.168.110.15", 9999))
+client.bind(("192.168.110.38", random.randint(8000, 9000)))
 
 # Meminta user untuk memasukkan password
 password_correct = False
