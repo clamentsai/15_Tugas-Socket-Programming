@@ -1,6 +1,7 @@
 import socket
 import threading
 import random
+from RC4 import encrypt
 
 # Membuat client socket menggunakan protokol UDP
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -32,14 +33,18 @@ while not username_accepted:
         print(f"Welcome, {name}!")
         username_accepted = True
 
+# Key untuk enkripsi
+Key = "AreaKuning"
+
 # Fungsi untuk menerima pesan dari server
 def receive():
     while True:
         try:
             # Menerima pesan dari server, maksimal 1024 bytes
             message, _ = client.recvfrom(1024)
+            message_decrypted = encrypt(Key, message)
             # Menampilkan pesan yang diterima (decode untuk mengubah byte ke string)
-            print(message.decode())
+            print(message_decrypted.decode())
         except:
             pass  # Jika ada error, lewati
 
@@ -50,8 +55,9 @@ t.start()
 # Loop untuk mengirim pesan ke server
 while True:
     message = input("")  # Meminta input pesan dari user
+    message_ciphertext = encrypt(Key, message)
     if message == "!q":
         exit()  # Keluar dari program jika user mengetik "!q"
     else:
         # Mengirim pesan ke server dengan format "nama: pesan"
-        client.sendto(f"{name}: {message}".encode(), ("192.168.110.38", 9999))
+        client.sendto(f"{name}: {message_ciphertext}".encode(), ("192.168.110.38", 9999))
