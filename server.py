@@ -1,80 +1,118 @@
-import socket  # Import modul untuk membuat koneksi jaringan
-import threading  # Import modul untuk membuat thread (multitasking)
-import queue  # Import modul untuk queue, struktur data FIFO (First In, First Out)
+import socket
+import threading
+import queue
+from users import register_user, login_user, check_username_exists
 
-# Queue untuk menyimpan pesan yang diterima
 messages = queue.Queue()
 
-# Daftar untuk menyimpan alamat dari semua client yang terkoneksi
 clients = []
 
-# Daftar untuk menyimpan username yang telah terdaftar
 usernames = {}
 
-# Password server (client harus memasukkan ini dengan benar)
 SERVER_PASSWORD = "12345"
 
-# Membuat server socket menggunakan protokol UDP (SOCK_DGRAM)
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# Mengikat server ke alamat localhost dengan port 9999
-server.bind(("192.168.110.38", 9999))
+# Gunakan IP Address Local device dengan cara ambil di ipconfig, dan port setting 
+server.bind(("192.168.100.170", 9999))
 
-# Fungsi untuk menerima pesan dari client
+# File untuk menyimpan riwayat pesan
+chat_file = "chat.txt"
+
+def save_message_to_file(message):
+    with open(chat_file, "a") as file:
+        file.write(message + "\n")
+
+def load_chat_history():
+    try:
+        with open(chat_file, "r") as file:
+            return file.readlines()
+    except FileNotFoundError:
+        return []  
+
+def send_chat_history(addr):
+    history = load_chat_history()
+    for line in history:
+        server.sendto(line.strip().encode(), addr)
+
 def receive():
     while True:
         try:
-            # Menerima pesan dari client, maksimal 1024 bytes
             message, addr = server.recvfrom(1024)
-            # Menambahkan pesan dan alamat client ke dalam antrian
             messages.put((message, addr))
         except:
-            pass  # Jika ada error, lewati
+            pass 
 
-# Fungsi untuk mengirimkan pesan ke semua client
 def broadcast():
     while True:
-        # Jika ada pesan di antrian
         while not messages.empty():
-            # Mengambil pesan dari antrian
             message, addr = messages.get()
             decoded_message = message.decode()
-            print(decoded_message)
 
-            # Jika client baru belum ada di daftar, tambahkan
             if addr not in clients:
-                # Memproses pesan pertama (password dan registrasi username)
                 if decoded_message.startswith("PASSWORD:"):
                     password = decoded_message.split(":")[1]
                     if password == SERVER_PASSWORD:
                         server.sendto("PASSWORD_OK".encode(), addr)
                     else:
                         server.sendto("PASSWORD_WRONG".encode(), addr)
-                elif decoded_message.startswith("SIGNUP_TAG:"):
-                    name = decoded_message.split(":")[1]
-                    # Cek apakah username sudah digunakan
-                    if name in usernames.values():
+                
+                elif decoded_message.startswith("SIGNUP:"):
+                    _, username, password = decoded_message.split(":")
+                    if check_username_exists(username):
                         server.sendto("USERNAME_TAKEN".encode(), addr)
                     else:
-                        usernames[addr] = name
-                        clients.append(addr)
-                        server.sendto(f"{name} joined!".encode(), addr)
-                        # Kirim pesan ke semua client bahwa user baru telah bergabung
-                        for client in clients:
-                            server.sendto(f"{name} joined!".encode(), client)
-            else:
-                # Kirim pesan biasa ke semua client
-                for client in clients:
-                    try:
-                        server.sendto(message, client)
-                    except:
-                        # Jika ada error saat mengirim ke client tertentu, hapus client dari daftar
-                        clients.remove(client) 
+                        if register_user(username, password):
+                            usernames[addr] = username
+                            clients.append(addr)
+                            print(f"{username} has registered to the server")
+                            server.sendto("SIGNUP_SUCCESS".encode(), addr)
+                        else:
+                            server.sendto("SIGNUP_FAILED".encode(), addr)
+                
+                elif decoded_message.startswith("SIGNIN:"):
+                    _, username, password = decoded_message.split(":")
+                    if login_user(username, password):
+                        if username in usernames.values():
+                            server.sendto("USERNAME_TAKEN".encode(), addr)
+                        else:
+                            usernames[addr] = username
+                            clients.append(addr)
+                            print(f"{username} has logged in to the server")
+                            server.sendto("SIGNIN_SUCCESS".encode(), addr)
+                            send_chat_history(addr) # Kirim pesan ke semua client bahwa user baru telah bergabung
+                            for client in clients:
+                                server.sendto(f"{username}: has joined to the server".encode(), client)
+                    else:
+                        server.sendto("SIGNIN_FAILED".encode(), addr)
 
-# Membuat thread untuk menjalankan fungsi receive dan broadcast secara bersamaan
+                elif decoded_message.endswith("has left the chat"):
+                    clients.remove(client)                        
+
+            else:
+                # Proses ketika client meninggalkan chat
+                if decoded_message.endswith("has left the chat"):
+                    name = usernames[addr]
+                    print(f"{name} has left the chat")
+                    # Hapus client dari daftar clients dan usernames
+                    del usernames[addr]
+                    clients.remove(addr)
+                    for client in clients:
+                        server.sendto(f"{name}: has left the chat".encode(), client)
+                # Kirim pesan biasa ke semua client
+                else:  
+                    # Mencetak pesan yang dikirim client ke layar                      
+                    print(decoded_message)
+                    save_message_to_file(decoded_message) # Menyimpan pesan ke txt
+                    for client in clients:
+                        try:
+                            server.sendto(message, client)
+                        except:
+                            clients.remove(client) 
+
 t1 = threading.Thread(target=receive)
 t2 = threading.Thread(target=broadcast)
 
-# Memulai kedua thread
+print("ArKun server is listening...")
 t1.start()
 t2.start()

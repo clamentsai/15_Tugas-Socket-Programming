@@ -3,17 +3,22 @@ import threading
 import random
 from RC4 import encrypt
 
-# Membuat client socket menggunakan protokol UDP
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# Mengikat client ke alamat localhost dengan port acak antara 8000 hingga 9000
-client.bind(("192.168.110.38", random.randint(8000, 9000)))
+# Gunakan IP Address Client sendiri, (memakai randint untuk port dikarenakan server dan client dijalankan di satu device yang sama)
+client.bind(("192.168.100.170", random.randint(8000, 9000))) 
+
+# Key untuk enkripsi
+Key = "AreaKuning"
+
+# Variabel untuk menyimpan username
+username = ""
 
 # Meminta user untuk memasukkan password
 password_correct = False
 while not password_correct:
     password = input("Enter server password: ")
-    client.sendto(f"PASSWORD:{password}".encode(), ("192.168.110.38", 9999))
+    client.sendto(f"PASSWORD:{password}".encode(), ("192.168.100.170", 9999)) # Untuk sendto, gunakan IP Address Server dan port Server juga
     message, _ = client.recvfrom(1024)
     if message.decode() == "PASSWORD_OK":
         password_correct = True
@@ -21,43 +26,67 @@ while not password_correct:
     else:
         print("Wrong password, please try again.")
 
-# Meminta user untuk memasukkan nickname (username) dan memastikan unik
-username_accepted = False
-while not username_accepted:
-    name = input("Nickname: ")
-    client.sendto(f"SIGNUP_TAG:{name}".encode(), ("192.168.110.38", 9999))
-    message, _ = client.recvfrom(1024)
-    if message.decode() == "USERNAME_TAKEN":
-        print("Username already taken, please choose a different one.")
-    else:
-        print(f"Welcome, {name}!")
-        username_accepted = True
+# Memilih antara Sign Up atau Sign In
+print("Choose an option:")
+print("1. Sign Up")
+print("2. Sign In")
+choice = input("Enter your choice (1/2): ")
 
-# Key untuk enkripsi
-Key = "AreaKuning"
+if choice == '1':
+    # Proses Sign Up
+    while True:
+        username = input("Enter your username: ")
+        password = input("Enter your password: ")
+        client.sendto(f"SIGNUP:{username}:{password}".encode(), ("192.168.100.170", 9999)) # Untuk sendto, gunakan IP Address Server dan port Server juga
+        message, _ = client.recvfrom(1024)
+        if message.decode() == "USERNAME_TAKEN":
+            print("Username already taken, please choose a different one.")
+        elif message.decode() == "SIGNUP_SUCCESS":
+            print(f"Welcome, {username}! You have successfully registered.")
+            break
+        else:
+            print("Registration failed. Please try again.")
 
-# Fungsi untuk menerima pesan dari server
+elif choice == '2':
+    # Proses Sign In
+    while True:
+        username = input("Enter your username: ")
+        password = input("Enter your password: ")
+        client.sendto(f"SIGNIN:{username}:{password}".encode(), ("192.168.100.170", 9999)) # Untuk sendto, gunakan IP Address Server dan port Server juga
+        message, _ = client.recvfrom(1024)
+        if message.decode() == "USERNAME_TAKEN":
+            print("Username already login, please choose a different one.")
+        elif message.decode() == "SIGNIN_SUCCESS":
+            print(f"Welcome back, {username}!")
+            break
+        else:
+            print("Login failed. Please check your username and password.")
+
 def receive():
     while True:
         try:
-            # Menerima pesan dari server, maksimal 1024 bytes
             message, _ = client.recvfrom(1024)
-            message_decrypted = encrypt(Key, message)
-            # Menampilkan pesan yang diterima (decode untuk mengubah byte ke string)
-            print(message_decrypted.decode())
+            name, encrypted_message = message.decode().split(": ", 1)
+            if encrypted_message == "has left the chat":
+                print(f"{name} has left the chat")
+            elif encrypted_message == "has joined to the server":
+                if name != username:
+                    print(f"{name} has joined to the server")
+            else:
+                decrypted_message = encrypt(Key, encrypted_message)
+                print(f"{name}: {decrypted_message}")
         except:
-            pass  # Jika ada error, lewati
+            pass  
 
-# Membuat thread untuk menjalankan fungsi receive
 t = threading.Thread(target=receive)
 t.start()
 
-# Loop untuk mengirim pesan ke server
 while True:
-    message = input("")  # Meminta input pesan dari user
-    message_ciphertext = encrypt(Key, message)
-    if message == "!q":
-        exit()  # Keluar dari program jika user mengetik "!q"
+    message = input("")  
+    if message == "quit":
+        client.sendto(f"{username}: has left the chat".encode(), ("192.168.100.170", 9999)) # Untuk sendto, gunakan IP Address Server dan port Server juga
+        exit()  
     else:
         # Mengirim pesan ke server dengan format "nama: pesan"
-        client.sendto(f"{name}: {message_ciphertext}".encode(), ("192.168.110.38", 9999))
+        encrypted_message = encrypt(Key, message)
+        client.sendto(f"{username}: {encrypted_message}".encode(), ("192.168.100.170", 9999)) # Untuk sendto, gunakan IP Address Server dan port Server juga
